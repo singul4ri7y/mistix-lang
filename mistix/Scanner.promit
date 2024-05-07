@@ -169,7 +169,7 @@ class Scanner {
         }
 
         if(this._is_end()) 
-            return tk.error_token(this, 'String er dekhi shesh e nai!');
+            return tk.error_token(this, 'Unterminated string!!');
 
         /* Now we are sure that there is ending quotation present. 
            But we don't want it to be included. */

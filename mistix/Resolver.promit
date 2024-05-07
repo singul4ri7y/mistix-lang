@@ -297,11 +297,11 @@ class Resolver {
 
     ## --------------- EXPRESSIONS END ---------------- ##
 
-    /* Resovles a kriya */
-    const _resolve_fn(stmt, kriya_type) {
+    /* Resovles a function. */
+    const _resolve_fn(stmt, fn_type) {
         take enclosing_fn = this._current_fn;
 
-        this._current_fn = kriya_type;
+        this._current_fn = fn_type;
 
         /* A function is always in scope. */
         this._begin_scope();
@@ -315,7 +315,7 @@ class Resolver {
 
         this._end_scope();
 
-        /* Change back to the previous kriya type. */
+        /* Change back to the previous fn type. */
         this._current_fn = enclosing_fn;
     }
 

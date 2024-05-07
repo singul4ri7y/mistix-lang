@@ -264,28 +264,6 @@ class Interpreter {
         return null;
     }
 
-    /* Bol statement. */
-    const visit_bol_stmt(stmt) {
-        // take value = this._exec(stmt.expr);
-
-        // if(this._stop_progress()) 
-        //     return null;
-
-        // if(typeof value == 'null') 
-        //     value = 'nai';
-        // else if(typeof value == 'boolean') 
-        //     value = value ? 'hae' : 'naa';
-        // else if(value == Infinity) 
-        //     value = 'Oshiiiiiiiiim';
-        // else if(value == -Infinity) 
-        //     value = '-Oshiiiiiiiiim';
-        // else value = String::stringify(value);
-        // 
-        // System::stdout.write_line(value);
-
-        // return null;
-    }
-
     const visit_var_stmt(stmt) {
         take value = null;
 
@@ -414,7 +392,7 @@ class Interpreter {
 
     /* Executes a block statement. */
     /* Will be used outside of the interpreter native functions. */
-    const exec_block(statements, environment, in_kriya) {
+    const exec_block(statements, environment, in_fn) {
         take prev_env = this._environment;
 
         /* Now set the newly created environment. */
@@ -429,7 +407,7 @@ class Interpreter {
 
         take ret_val = this._ret_value;
 
-        if(in_kriya) {
+        if(in_fn) {
             this._has_returned = false;
             this._ret_value    = null;
         }

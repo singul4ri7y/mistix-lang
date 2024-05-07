@@ -473,7 +473,7 @@ class Parser {
         return stmt.Var(tk.extract(this._src, name), initializer, name);
     }
 
-    /* Declares a function. 'kriya' in this case. */
+    /* Declares a function. */
     const _fn_decl(kind) {
         take name = this._consume(tk.TokenType.IDENTIFIER, 'Expected a $kind name!');
 

@@ -50,7 +50,7 @@ class Fn is Callable {
 
         take method = Fn(this._declaration, env, this._is_init);
 
-        method.stringify = fn() { return "<method of instance '${khetro.get_klash_name()}'>" };
+        method.stringify = fn() { return "<method of instance '${instance.get_cls_name()}'>" };
 
         return method;
     }
@@ -63,7 +63,19 @@ class Print is Fn {
     const stringify() { return "<native fn 'print'>" }
 
     const call(interpreter, arguments) {
-        System::stdout.write_line(String::stringify(arguments[0]));
+        take value = arguments[0];
+
+        if(typeof value == 'null') 
+            value = 'nul';
+        else if(typeof value == 'boolean') 
+            value = value ? 'tru' : 'fal';
+        else if(value == Infinity) 
+            value = 'inf';
+        else if(value == -Infinity) 
+            value = '-inf';
+        else value = String::stringify(value);
+        
+        System::stdout.write_line(value);
     }
 };
 
