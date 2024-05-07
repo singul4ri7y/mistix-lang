@@ -1,0 +1,343 @@
+/* A Resolver for semantic analysis. */
+
+{{
+
+class Resolver {
+    static FnType = {
+        FUNCTION     : 0,
+        METHOD       : 1,
+        INITIALIZER  : 2,
+
+        NONE : -1
+    };
+
+    static ClsType = {
+        SUPERCLASS : 0,
+        CLASS      : 1,
+
+        NONE : -1
+    };
+
+    const init(mistix) {
+        /* There will be dictionaries in this list.
+           Each denoting a single scope. In every scope,
+           there will be string-boolean pair, denoting
+           a variable name and whether it is in delcared 
+           (false) or defined (true) state. */
+        this._scopes      = [];
+        this._mistix      = mistix;
+        this._current_fn  = Resolver::FnType.NONE;
+        this._current_cls = Resolver::ClsType.NONE;
+    }
+    
+    /* Resolves a statement/expression. */
+    const _resolve(resolvable) {
+        resolvable.accept(this);
+    }
+
+    /* Begins a scope. */
+    const _begin_scope() {
+        this._scopes.insert({});
+    }
+
+    /* Ends a scope. */
+    const _end_scope() {
+        this._scopes.pop();
+    }
+
+    /* Declares a variable. */
+    const _declare(name, token) {
+        /* We are in global scope. */
+        if(len(this._scopes) == 0) 
+            return;
+
+        /* The innermost scope. */
+        take scope = this._scopes[-1];
+
+        if(scope.has_key(name) && token != null) {
+            this._mistix.error(token, "Redefinition of the variable '$name' in the same scope!");
+
+            return null;
+        }
+
+        # Every scope is a dictionary.
+        this._scopes[-1][name] = false;
+    }
+
+    /* Defines a variable. */
+    const _define(name) {
+        if(len(this._scopes) == 0) 
+            return;
+
+        this._scopes[-1][name] = true;
+    }
+
+    ## ---------------- THE VISITORS ---------------- ##
+
+    ## --------------- STATEMENTS ----------------- ##
+
+    const visit_block_stmt(stmt) {
+        this._begin_scope();
+        this.analyze(stmt.statements);
+        this._end_scope();
+    }
+
+    const visit_var_stmt(stmt) {
+        this._declare(stmt.name, stmt.token);
+
+        if(stmt.initializer != null) 
+            this._resolve(stmt.initializer);
+
+        this._define(stmt.name);
+
+        return null;
+    }
+
+    const visit_fn_stmt(stmt) {
+        this._declare(stmt.name, stmt.token);
+        this._define(stmt.name);
+
+        this._resolve_fn(stmt, Resolver::FnType.FUNCTION);
+
+        return null;
+    }
+
+    const visit_expression_stmt(stmt) {
+        this._resolve(stmt.expr);
+        return null;
+    }
+
+    const visit_if_stmt(stmt) {
+        this._resolve(stmt.condition);
+        this._resolve(stmt.then);
+
+        if(stmt.else_) this._resolve(stmt.else_);
+
+        return null;
+    }
+
+    const visit_dur_stmt(stmt) {
+        this._resolve(stmt.condition);
+        this._resolve(stmt.body);
+
+        return null;
+    }
+
+    const visit_ret_stmt(stmt) {
+        if(this._current_fn == Resolver::FnType.NONE) {
+            this._mistix.error(stmt.token, 'Cannot return from top-level program!');
+
+            return null;
+        }
+
+        if(stmt.value != null) {
+            if(this._current_fn == Resolver::FnType.INITIALIZER) {
+                this._mistix.error(stmt.token, "Can only return 'nul' from class initializer (construct).");
+
+                return null;
+            }
+
+            this._resolve(stmt.value);
+        }
+
+        return null;
+    }
+
+    const visit_cls_stmt(stmt) {
+        take enclosing_cls = this._current_cls;
+        this._current_cls = Resolver::ClsType.SUPERCLASS;
+
+        this._declare(stmt.name);
+        this._define(stmt.name);
+
+        if(stmt.superclass != null && stmt.name == stmt.superclass.name) {
+            this._mistix.error(stmt.superclass.token, 'Cannot inherit thy! Are you mad!?');
+
+            return null;
+        }
+
+        /* Resolve superclass. */
+        if(stmt.superclass != null) {
+            this._current_cls = Resolver::ClsType.CLASS;
+
+            this._resolve(stmt.superclass);
+
+            this._begin_scope();
+            this._scopes[-1].sup = true;
+        }
+
+        /* Create a scope to keep 'sel'. All the methods
+           are going to be closures anyway, which will be 
+           mapped up to the scope we are creating. */
+        this._begin_scope();
+        this._scopes[-1].sel = true;
+
+        /* Now resolve all the methods. */
+        for(take i = 0; i < len(stmt.methods); i++) {
+            take type = Resolver::FnType.METHOD;
+
+            if(stmt.methods[i].name == 'construct') 
+                type = Resolver::FnType.INITIALIZER;
+
+            this._resolve_fn(stmt.methods[i], type);
+        }
+
+        this._end_scope();
+        
+        if(stmt.superclass != null) 
+            this._end_scope();
+
+        this._current_cls = enclosing_cls;
+
+        return null;
+    }
+
+    ## --------------- STATEMENTS END ----------------- ##
+
+    ## --------------- EXPRESSIONS ---------------- ##
+    
+    const visit_variable_expr(expr) {
+        if(len(this._scopes) != 0) {
+            take scope = this._scopes[-1];
+
+            if(scope.has_key(expr.name) && scope[expr.name] == false) {
+                this._mistix.error(expr.token, 'How can you initialize thyself??');
+
+                return null;
+            }
+        }
+
+        this._resolve_local(expr.name, expr);
+
+        return null;
+    }
+
+    const visit_assign_expr(expr) {
+        /* Resolve the value. */
+
+        this._resolve(expr.value);
+        this._resolve_local(expr.name, expr);
+
+        return null;
+    }
+
+    const visit_binary_expr(expr) {
+        this._resolve(expr.left);
+        this._resolve(expr.right);
+        
+        return null;
+    }
+
+    const visit_call_expr(expr) {
+        this._resolve(expr.callee);
+
+        for(take i = 0; i < len(expr.arguments); i++) 
+            this._resolve(expr.arguments[i]);
+
+        return null;
+    }
+
+    const visit_unary_expr(expr) {
+        this._resolve(expr.right);
+    }
+
+    /* Nothing to do in literal, it is as fundamental as can get. */
+    const visit_literal_expr(expr) {
+        return null;
+    }
+
+    const visit_logical_expr(expr) {
+        this._resolve(expr.left);
+        this._resolve(expr.right);
+
+        return null;
+    }
+
+    const visit_get_expr(expr) {
+        this._resolve(expr.object);
+
+        return null;
+    }
+
+    const visit_set_expr(expr) {
+        this._resolve(expr.object);
+        this._resolve(expr.value);
+
+        return null;
+    }
+
+    const visit_sel_expr(expr) {
+        if(this._current_cls == Resolver::ClsType.NONE) {
+            this._mistix.error(expr.token, "Can only access 'sel' (self) in a method!");
+
+            return null;
+        }
+
+        this._resolve_local('sel', expr);
+
+        return null;
+    }
+
+    const visit_sup_expr(expr) {
+        if(this._current_cls == Resolver::ClsType.NONE) {
+            this._mistix.error(expr.token, "Can only access 'sup' (super) from a method!");
+
+            return null;
+        }
+        else if(this._current_cls != Resolver::ClsType.CLASS) {
+            this._mistix.error(expr.token, "You need to inherit a superclass to be able to use 'sup' (super)!");
+
+            return null;
+        }
+
+        this._resolve_local('sup', expr);
+
+        return null;
+    }
+
+    ## --------------- EXPRESSIONS END ---------------- ##
+
+    /* Resovles a kriya */
+    const _resolve_fn(stmt, kriya_type) {
+        take enclosing_fn = this._current_fn;
+
+        this._current_fn = kriya_type;
+
+        /* A function is always in scope. */
+        this._begin_scope();
+
+        for(take i = 0; i < len(stmt.params); i++) {
+            this._declare(stmt.params[i], null);
+            this._define(stmt.params[i]);
+        }
+
+        this.analyze(stmt.body);
+
+        this._end_scope();
+
+        /* Change back to the previous kriya type. */
+        this._current_fn = enclosing_fn;
+    }
+
+    /* Resovles a lcoal and saves a distance, so that the interpreter
+       can resolve the correct local later on. */
+    const _resolve_local(name, expr) {
+        for(take i = len(this._scopes) - 1; i >= 0; i--) {
+            if(this._scopes[i].has_key(name)) {
+                expr.distance = len(this._scopes) - i - 1;
+
+                return;
+            }
+        }
+    }
+
+    /* Analyzes the syntax tree generated by the parser. */
+    const analyze(statements) {
+        for(take i = 0; i < len(statements); i++) 
+            this._resolve(statements[i]);
+    }
+};
+
+return { Resolver };
+
+}}

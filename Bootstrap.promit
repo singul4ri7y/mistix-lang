@@ -1,0 +1,15 @@
+/* Bootstrap code. */
+
+if(len($_ARGS) > 2) {
+    System::stdout.write_line('Usage: mistix [file]');
+    System::exit(64);
+}
+
+/* We need to set the include directory to 'src'. */
+System::set_include_path('./mistix/');
+
+take mistix = include('Mistix').Mistix();
+
+if(len($_ARGS) == 2) 
+    mistix.run_file($_ARGS[1]);
+else mistix.repl();

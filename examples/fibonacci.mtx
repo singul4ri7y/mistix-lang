@@ -1,0 +1,13 @@
+@ An unoptimized fibonacci program.
+
+fn fib[n] {
+    if n < 2 { ret n }
+
+    ret fib(n - 1) + fib(n - 2);
+}
+
+print('All the fibonacci numbers from 0 to 20: ');
+
+exp var i = 0; i <= 20; i = i + 1; {
+    print(fib(i));
+}

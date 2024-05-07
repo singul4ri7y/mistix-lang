@@ -1,0 +1,68 @@
+{{
+
+class Environment {
+    const init(enclosing) {
+        this._table     = {};
+        this._enclosing = enclosing;
+    }
+
+    const define(name, value) {
+        /* For the global redefinitions. */
+        if(this._table.has_key(name)) 
+            return false;
+
+        this._table[name] = value;
+
+        return true;
+    }
+
+    const get(name) {
+        if(this._table.has_key(name)) 
+            return this._table[name];
+
+        if(this._enclosing != null) 
+            return this._enclosing.get(name);
+
+        /* Returning a dictionary to indicate issue. */
+        return { error: "Undefined variable '$name'!" };
+    }
+
+    /* Get from a certain enclosing environment without recursing
+       and checking through all the enclosings. */
+    const get_at(distance, name) {
+        return this._ancestor(distance).get(name);
+    }
+
+    const assign(name, value) {
+        if(this._table.has_key(name)) {
+            this._table[name] = value;
+
+            return true;
+        }
+
+        if(this._enclosing != null) 
+            return this._enclosing.assign(name, value);
+
+        return false;
+    }
+
+    /* Assign at a certain enclosing environment. */
+    const assign_at(distance, name, value) {
+        return this._ancestor(distance).assign(name, value);
+    }
+
+    /* Get the defined enclosing ancestor. */
+    const _ancestor(distance) {
+        take env = this;
+
+        while(distance-- && env) 
+            env = env._enclosing;
+
+        return env;
+    }
+};
+
+return { Environment };
+
+}}
+

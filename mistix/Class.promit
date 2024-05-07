@@ -1,0 +1,91 @@
+{{
+
+take Callable = include('Callable').Callable;
+
+## ---------------- INSTANCE ---------------- ##
+
+class Instance {
+    const init(klass) {
+        this._klass   = klass;
+        this._fields  = {};
+    }
+
+    /* Returns the name of the class. */
+    const get_cls_name() {
+        return this._klass.name;
+    }
+
+    /* Gets a property. */
+    const get(name) {
+        if(this._fields.has_key(name)) 
+            return this._fields[name];
+
+        take method = this._klass.find_method(name);
+
+        if(method != null) return method.bind(this);
+
+        return { error : "Instance does not have property '$name'!" };
+    }
+
+    /* Sets a property. */
+    const set(name, value) {
+        this._fields[name] = value;
+    }
+
+    const stringify() {
+        return "<instance of '${this._klass.name}' class>";
+    }
+};
+
+## ---------------- INSTANCE END ---------------- ##
+
+## ---------------- CLASS ---------------- ##
+
+class Class is Callable {
+    const init(name, methods, superclass) {
+        this.name        = name;
+        this._methods    = methods;
+        this._superclass = superclass;
+    }
+
+    const call(interpreter, arguments) {
+        take instance = Instance(this);
+
+        take initializer = this.find_method('construct');
+
+        if(initializer != null) 
+            initializer.bind(instance).call(interpreter, arguments);
+
+        return instance;
+    }
+
+    const arity() {
+        take initializer = this.find_method('construct');
+
+        if(initializer != null) 
+            return initializer.arity();
+        
+        return 0;
+    }
+
+    /* Returns null if no such method exist. */
+    const find_method(name) {
+        if(this._methods.has_key(name)) 
+            return this._methods[name];
+
+        if(this._superclass != null) 
+            return this._superclass.find_method(name);
+
+        return null;
+    }
+
+    const stringify() {
+        return "<class '${this.name}'>";
+    }
+};
+
+## ---------------- CLASS END ---------------- ##
+
+return { Instance, Class };
+
+}}

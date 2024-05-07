@@ -1,0 +1,13 @@
+{{
+
+/* This class is going to be used as a reference class. */
+
+class Callable {
+    const arity() {}
+    const call(interpreter, arguments) {}
+};
+
+return { Callable };
+
+}}
+

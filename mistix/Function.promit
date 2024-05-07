@@ -1,0 +1,87 @@
+{{
+
+take Callable    = include('Callable').Callable;
+take Environment = include('Environment').Environment;
+
+## For Mistix defiend functions/methods.
+
+class Fn is Callable {
+    const init(declaration, closure, is_init) {
+        this._declaration = declaration;
+        this._closure     = closure;
+        this._is_init     = is_init;
+    }
+
+    const arity() {
+        return len(this._declaration.params);
+    }
+
+    const call(interpreter, arguments) {
+        if(interpreter.get_total_number_of_frames() >= 24) {
+            interpreter.error(this._declaration.token.line, 'Stack frame overflow! Cannot stack more than 24 frames.');
+
+            return null;
+        }
+
+        take environment = Environment(this._closure);
+
+        for(take i = 0; i < len(this._declaration.params); i++) 
+            environment.define(this._declaration.params.at(i), arguments.at(i));
+
+        /* Create a call frame. */
+        interpreter.add_frame();
+
+        take result = interpreter.exec_block(this._declaration.body, environment, true);
+
+        /* Now remove the call frame. */
+        interpreter.remove_frame();
+
+        return this._is_init ? this._closure.get('sel') : result;
+    }
+
+    const stringify() {
+        return "<fn '${this._declaration.name}'>";
+    }
+
+    /* Binds an Instance */
+    const bind(instance) {
+        take env = Environment(this._closure);
+        env.define('sel', instance);
+
+        take method = Fn(this._declaration, env, this._is_init);
+
+        method.stringify = fn() { return "<method of instance '${khetro.get_klash_name()}'>" };
+
+        return method;
+    }
+};
+
+## ---------------- NATIVE FUNCTIONS ---------------- ##
+
+class Print is Fn {
+    const arity() { return 1 }
+    const stringify() { return "<native fn 'print'>" }
+
+    const call(interpreter, arguments) {
+        System::stdout.write_line(String::stringify(arguments[0]));
+    }
+};
+
+class Input is Fn {
+    const arity() { return 1 }
+    const stringify() { return "<native fn 'input'>" }
+    
+    const call(interpreter, arguments) {
+        switch(arguments.at(0)) {
+            case 'num'    : return receive(num);
+            case 'string' : return receive(string);
+        }
+
+        ## UNREACHABLE.
+        return null;
+    }
+};
+
+return { Fn, Print, Input };
+
+}}

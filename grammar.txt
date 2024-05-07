@@ -1,0 +1,39 @@
+---------------- GRAMMAR BNF ----------------
+
+
+Delcarations: 
+program     -> declaration* EOF;
+declaration -> var_decl | fn_decl | class_decl | statements;
+var_decl    -> "var" IDENTIFIER "=" "expression" end;
+fn_decl     -> "fn" function;
+class_decl  -> "cls" IDENTIFIER ( "[" IDENTIFIER "]" )? "{" function* "}" end;
+
+Statements: 
+statement   -> expr_stmt | block | if_stmt | 
+               during_stmt | expire_stmt | return_stmt;
+expr_stmt   -> expression end;
+block       -> "{" declaration* "}";
+if_stmt     -> "if" expression block ( "else" statement )? ;
+during_stmt -> "dur" expression block;
+expire_stmt -> "exp" ( var_decl | expression )? ";" 
+               expression? ";" expression? ";" block;
+return_stmt -> "ret" expression end;
+
+Expressions: 
+expression -> assignment;
+assignment -> IDENTIFIER "=" expression | logic_or;
+logic_or   -> logic_and ( "or" logic_and )* ;
+logic_and  -> equality ( "and" equality )* ;
+equality   -> comparison ( ( "*=" | "==" ) comparison )* ;
+comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+term       -> factor ( ( "+" | "-" ) factor )* ;
+factor     -> unary ( ( "*" | "/" ) unary )* ;
+unary      -> ( "-" | "*" ) unary | call;
+call       -> primary ( "(" arguments? ")" | "->" IDENTIFIER )* ;
+primary    -> NUMBER | STRING | "sel" | "tru" | "fal" | "nul" | "(" expression ")" | "sup" "->" IDENTIFIER;
+
+Helpers:
+arguments  -> expression ( "," expression )* ;
+function   -> IDENTIFIER "[" parameters? "]" block;
+parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
+end        -> ( ";" | NEWLINE )

@@ -1,0 +1,293 @@
+{{
+
+take tk = include('Token');
+
+class Scanner {
+    init(src) {
+        this._had_error = false;
+        this._error_msg = '';
+
+        if(typeof src != 'string') { 
+            this._had_error = true;
+            this._error_msg = 'Expected string as an input to the Scanner!';
+        }
+
+        this._src     = src;
+        this._len     = len(src);
+        this._start   = 0;
+        this._line    = 1;
+        this._current = 0;
+        
+        /* Stores the list of tokens. */
+        this._tokens = [];
+
+        /* All the identifier keywords. */
+        this._keywords = {
+            'if'  : tk.TokenType.IF,
+            'el'  : tk.TokenType.EL,
+            'dur' : tk.TokenType.DUR,
+            'exp' : tk.TokenType.EXP,
+            'ret' : tk.TokenType.RET,
+            'and' : tk.TokenType.AND,
+            'or'  : tk.TokenType.OR,
+            'var' : tk.TokenType.VAR,
+            'sel' : tk.TokenType.SEL,
+            'sup' : tk.TokenType.SUP,
+            'fn'  : tk.TokenType.FN,
+            'cls' : tk.TokenType.CLS,
+            'tru' : tk.TokenType.TRU,
+            'fal' : tk.TokenType.FAL,
+            'nul' : tk.TokenType.NUL
+        };
+    }
+
+    /* Advance one character at once. */
+    const _advance() {
+        return this._src[this._current++];
+    }
+
+    /* Returns true if we are at the end. */
+    const _is_end() {
+        return this._current == this._len;
+    }
+
+    /* Checks whether the provided character is a digit. */
+    const _is_digit(ch) {
+        if(typeof ch != 'string') 
+            return false;
+
+        take num = ch - '0';
+
+        return num >= 0 && num <= 9;
+    }
+
+    /* Check whether the character is alphanumeric. */
+    const _is_alpha(ch) {
+        if(typeof ch != 'string') 
+            return false;
+
+        take res = ch == '\$' || ch == '_',
+             num = ch.code_at();
+        
+        return res || (num >= 'A'.code_at() && num <= 'Z'.code_at()) || 
+            (num >= 'a'.code_at() && num <= 'z'.code_at());
+    }
+
+    /* Peek at current character. */
+    const _peek() {
+        if(this._is_end()) 
+            return null;
+
+        return this._src[this._current];
+    }
+
+    /* Peed at the next character if possible. */
+    const _peek_next() {
+        if(this._current + 1 >= this._len) 
+            return null;
+
+        return this._src[this._current + 1];
+    }
+
+    /* Skips all the whitespaces. */
+    const _skip_whitespace() {
+        while(true) {
+            take ch = this._peek();
+
+            switch(ch) {
+                case ' ':
+                case '\t':
+                case '\r':
+                    this._advance();
+                    break;
+                
+                /* Comment. */
+                case '@': {
+                    while(!this._is_end() && this._advance() != '\n');
+
+                    this._line++;
+                } break;
+
+                default: return;
+            }
+        }
+    }
+
+    /* Checks whether the given character is the current character.
+       If it is, advances and returns true. False otherwise. */
+    const _match(ch) {
+        take result = false;
+
+        if(this._peek() == ch) {
+            result = true;
+
+            this._advance();
+        }
+
+        return result;
+    }
+
+    /* Number type tokens. */
+    const _number() {
+        while(this._is_digit(this._peek())) this._advance();
+
+        if(this._peek() == '.' && this._is_digit(this._peek_next())) {
+            this._advance();
+
+            while(this._is_digit(this._peek())) this._advance();
+        }
+
+        take lexeme = this._src.substr(this._start, this._current);
+
+        return tk.make_token(this, tk.TokenType.NUMBER, Number::numberify(lexeme));
+    }
+
+    const _is_alpha_numeric(ch) {
+        return this._is_digit(ch) || this._is_alpha(ch);
+    }
+
+    /* Identifiers. */
+    const _identifier() {
+        while(this._is_alpha_numeric(this._peek())) this._advance();
+
+        take ident = this._src.substr(this._start, this._current);
+
+        /* Check if the identifier exist. */
+        if(this._keywords.has_key(ident)) 
+            return tk.make_token(this, this._keywords[ident]);
+
+        return tk.make_token(this, tk.TokenType.IDENTIFIER);
+    }
+
+    /* String. */
+    const _string(quote) {
+        while(this._peek() != quote && !this._is_end()) {
+            /* Shraboni-lang support multiline string. */
+            if(this._peek() == '\n') this._line++;
+
+            this._advance();
+        }
+
+        if(this._is_end()) 
+            return tk.error_token(this, 'String er dekhi shesh e nai!');
+
+        /* Now we are sure that there is ending quotation present. 
+           But we don't want it to be included. */
+        take token = tk.make_token(this, tk.TokenType.STRING, this._src.substr(this._start, this._current));
+
+        /* The closing quote. */
+        this._advance();
+
+        return token;
+    }
+
+    /* Returns a token. */
+    const scan_token() {
+        /* Skip whitespaces. */
+        this._skip_whitespace();
+
+        this._start = this._current;
+
+        /* If we are at the end of the source, no more tokens. */
+        if(this._is_end()) 
+            return tk.make_token(this, tk.TokenType.EOF);
+        
+        take ch = this._advance();
+
+        /* Check for digit type. */
+        if(this._is_digit(ch)) 
+            return this._number();
+
+        if(this._is_alpha(ch)) 
+            return this._identifier();
+
+        switch(ch) {
+            case '(': return tk.make_token(this, tk.TokenType.LEFT_PAREN);
+            case ')': return tk.make_token(this, tk.TokenType.RIGHT_PAREN);
+            case ',': return tk.make_token(this, tk.TokenType.COMMA);
+            case '%': return tk.make_token(this, tk.TokenType.MODULUS);
+            case '+': return tk.make_token(this, tk.TokenType.PLUS);
+            case '/': return tk.make_token(this, tk.TokenType.SLASH);
+            case ';': return tk.make_token(this, tk.TokenType.SEMICOLON);
+            case '{': return tk.make_token(this, tk.TokenType.LEFT_CURLY);
+            case '}': return tk.make_token(this, tk.TokenType.RIGHT_CURLY);
+            case '[': return tk.make_token(this, tk.TokenType.LEFT_SQUARE);
+            case ']': return tk.make_token(this, tk.TokenType.RIGHT_SQUARE);
+            case '>': return tk.make_token(this, this._match('=') ? 
+                      tk.TokenType.GREAT_EQUAL : tk.TokenType.GREAT);
+            case '<': return tk.make_token(this, this._match('=') ? 
+                      tk.TokenType.LESS_EQUAL : tk.TokenType.LESS);
+            case '*': return tk.make_token(this, this._match('=') ? 
+                      tk.TokenType.NOT_EQUAL : tk.TokenType.ASTERISK);
+            case '-': return tk.make_token(this, this._match('>') ? 
+                      tk.TokenType.ACCESS : tk.TokenType.MINUS);
+            case '=': return tk.make_token(this, this._match('=') ? 
+                      tk.TokenType.EQUAL2 : tk.TokenType.EQUAL);
+            case '\n': {
+                this._line++;
+
+                return tk.make_token(this, tk.TokenType.NEWLINE);
+            }
+
+            case '"': 
+            case "'": {
+                /* We don't need current quotation. */
+                this._start++;
+
+                return this._string(ch);
+            }
+        }
+
+        return tk.error_token(this, 'Unknown character!');
+    }
+
+    /* Read all the tokens at once. */
+    const scan_tokens() {
+        /* If we are at the end of the source, that means we have 
+           already scanned all the tokens. So, return them. */
+        if(this._is_end()) 
+            return this._tokens;
+
+        take token;
+
+        while((token = this.scan_token()).type != tk.TokenType.EOF) {
+            if(token.type == tk.TokenType.ERROR) {
+                this._error_msg = token.offset;
+                this._had_error = true;
+
+                return;
+            }
+
+            this._tokens.insert(token);
+        }
+
+        /* Insert the EOF token. */
+        this._tokens.insert(token);
+
+        return this._tokens;
+    }
+
+    /* Returns a string type if we had any error. Else returns null. */
+    const error() {
+        return this._had_error ? this._error_msg : null;
+    }
+
+    /* Returns the current position */
+    const get_offset() {
+        return this._start;
+    }
+
+    /* Returns the length of the current token. */
+    const get_length() {
+        return this._current - this._start;
+    }
+
+    /* Returns the current line number. */
+    const get_line() {
+        return this._line;
+    }
+};
+
+return { Scanner };
+
+}}

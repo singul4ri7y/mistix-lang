@@ -1,0 +1,98 @@
+{{
+
+class Expression {
+    const init(expr) {
+        this.expr = expr;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_expression_stmt(this);
+    }
+};
+
+class Var {
+    const init(name, initializer, token) {
+        this.name        = name;
+        this.initializer = initializer;
+        this.token       = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_var_stmt(this);
+    }
+};
+
+class Block {
+    const init(statements) {
+        this.statements = statements;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_block_stmt(this);
+    }
+};
+
+class If {
+    const init(condition, then, else_) {
+        this.condition = condition;
+        this.then      = then;
+        this.else_     = else_;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_if_stmt(this);
+    }
+};
+
+class During {
+    const init(condition, body) {
+        this.condition = condition;
+        this.body      = body;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_dur_stmt(this);
+    }
+};
+
+class Fn {
+    const init(name, params, body, token) {
+        this.name   = name;
+        this.params = params;
+        this.body   = body;
+        this.token  = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_fn_stmt(this);
+    }
+};
+
+class Return {
+    const init(value, token) {
+        this.value = value;
+        this.token = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_ret_stmt(this);
+    }
+};
+
+class Class {
+    const init(name, methods, superclass, token) {
+        this.name       = name;
+        this.methods    = methods;
+        this.superclass = superclass;
+        this.token      = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_cls_stmt(this);
+    }
+};
+
+return { Expression, Var, Block, If, During, 
+    Fn, Return, Class};
+
+}}

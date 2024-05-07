@@ -1,0 +1,18 @@
+@ A simple test of closures.
+
+fn counter[] {
+    @ 'i' will be enclosed by the function 'count'!
+    var i = 0;
+
+    fn count[] {
+        i = i + 1
+        ret i
+    }
+
+    ret count
+}
+
+var count = counter();
+
+print(count());
+print(count());
