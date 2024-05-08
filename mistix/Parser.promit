@@ -1,0 +1,635 @@
+/* A top-to-down Recursive Descent parser. Each production is 
+ * a function call, the grammer is unambiguous and precendented. 
+ * Check 'grammar.txt' for mistix-lang grammar.
+ */
+
+{{
+
+take expr = include('Expression');
+take stmt = include('Statement');
+take tk   = include('Token');
+
+class Parser {
+    const init(mistix, src, tokens) {
+        this._mistix     = mistix;
+        this._src        = src;
+        this._tokens     = tokens;
+        this._len        = len(tokens);
+        this._current    = 0;
+        this._had_error  = false;
+        this._panic_mode = false;
+    }
+
+    ## ---------------- EXPRESSIONS ---------------- ##
+
+    /* The equality production. 
+       Returns a Binary expression. */
+    const _equality() {
+        this._skip_newlines();
+
+        take _expr = this._comparison();
+
+        while(this._match_any([ tk.TokenType.EQUAL2, tk.TokenType.NOT_EQUAL ])) 
+            _expr = expr.Binary(_expr, this._previous(), this._comparison());
+
+        return _expr;
+    }
+
+    /* The comparison production. 
+       Returns a Binary expression as well. */
+    const _comparison() {
+        this._skip_newlines();
+
+        take _expr = this._term();
+
+        while(this._match_any([ tk.TokenType.GREAT, tk.TokenType.LESS, 
+              tk.TokenType.GREAT_EQUAL, tk.TokenType.LESS_EQUAL ])) 
+        {
+            _expr = expr.Binary(_expr, this._previous(), this._term());
+        }
+
+        return _expr;
+    }
+
+    /* The term production. */
+    const _term() {
+        this._skip_newlines();
+
+        take _expr = this._factor();
+
+        while(this._match_any([ tk.TokenType.PLUS, tk.TokenType.MINUS ])) 
+            _expr = expr.Binary(_expr, this._previous(), this._factor());
+
+        return _expr;
+    }
+
+    /* The factor production, for multiplication and division. */
+    const _factor() {
+        this._skip_newlines();
+
+        take _expr = this._unary();
+
+        while(this._match_any([ tk.TokenType.ASTERISK, tk.TokenType.SLASH,
+        tk.TokenType.MODULUS ])) 
+            _expr = expr.Binary(_expr, this._previous(), this._unary());
+
+        return _expr;
+    }
+
+    /* Unary production. */
+    const _unary() {
+        this._skip_newlines();
+
+        if(this._match_any([ tk.TokenType.ASTERISK, tk.TokenType.MINUS ])) 
+            return expr.Unary(this._previous(), this._unary());
+
+        return this._call();
+    }
+
+    /* Call functions or 'value' in general. */
+    const _call() {
+        this._skip_newlines();
+
+        take _expr = this._primary();
+
+        while(true) {
+            if(this._match(tk.TokenType.LEFT_PAREN)) 
+                _expr = this._finish_call(_expr);
+            else if(this._match(tk.TokenType.ACCESS)) {
+                take name = this._consume(tk.TokenType.IDENTIFIER, 'Expected a property name!');
+
+                _expr = expr.Get(_expr, tk.extract(this._src, name), name);
+            } else break;
+        }
+
+        return _expr;
+    }
+
+    /* Finish up calling. */
+    const _finish_call(callee) {
+        take arguments = [];
+
+        if(!this._check(tk.TokenType.RIGHT_PAREN)) {
+            do {
+                if(len(arguments) >= 255) 
+                    this._error(this._peek(), 'Cannot accept more than 255 arguments!');
+
+                arguments.insert(this._expression());
+            } while(this._match(tk.TokenType.COMMA));
+        }
+
+        take token = this._consume(tk.TokenType.RIGHT_PAREN, "Expected a ')' at the end of argument list!");
+
+        return expr.Call(callee, arguments, token /* For errors and all. */);
+    }
+
+    /* The primary production, for literals and all. */
+    const _primary() {
+        this._skip_newlines();
+
+        if(this._match(tk.TokenType.TRU)) return expr.Literal(true);
+        if(this._match(tk.TokenType.FAL)) return expr.Literal(false);
+        if(this._match(tk.TokenType.NUL)) return expr.Literal(null);
+
+        if(this._match_any([ tk.TokenType.NUMBER, tk.TokenType.STRING ])) 
+            return expr.Literal(this._previous().literal);
+
+        if(this._match(tk.TokenType.SUP)) {
+            take token = this._previous();
+
+            this._consume(tk.TokenType.ACCESS, "Expected a '->' to access a superclass method!");
+            take method = this._consume(tk.TokenType.IDENTIFIER, 'Exptected method name!');
+
+            return expr.Sup(tk.extract(this._src, method), token);
+        }
+
+        if(this._match(tk.TokenType.SEL)) 
+            return expr.Sel(this._previous());
+
+        /* Variable. */
+        if(this._match(tk.TokenType.IDENTIFIER)) {
+            take token = this._previous();
+
+            return expr.Variable(tk.extract(this._src, token), token);
+        }
+
+        /* Grouping. */
+        if(this._match(tk.TokenType.LEFT_PAREN)) {
+            take _expr = this._expression();
+
+            this._consume(tk.TokenType.RIGHT_PAREN, "Expected a ')' at the end of grouping!");
+
+            return expr.Grouping(_expr);
+        }
+
+        this._error(this._peek(), 'Expected expression!');
+    }
+
+    /* The logical 'or' operator. */
+    const _or() {
+        this._skip_newlines();
+
+        take _expr = this._and();
+
+        while(this._match(tk.TokenType.OR)) 
+            _expr = expr.Logical(_expr, this._previous(), this._and());
+
+        return _expr;
+    }
+
+    /* The logical 'and' operator. */
+    const _and() {
+        this._skip_newlines();
+
+        take _expr = this._equality();
+
+        while(this._match(tk.TokenType.AND)) 
+            _expr = expr.Logical(_expr, this._previous(), this._equality());
+
+        return _expr;
+    }
+
+    ## ---------------- EXPRESSIONS END ---------------- ##
+
+    /* Assigns a variable. */
+    const _assignment() {
+        take _expr = this._or();
+
+        if(this._match(tk.TokenType.EQUAL)) {
+            take equal = this._previous(),
+                 value = this._expression();
+
+            /* That indicates we were trying to set a variable. */
+            if(_expr instof expr.Variable) 
+                return expr.Assign(_expr.name, value, _expr.token);
+            else if(_expr instof expr.Get) 
+                return expr.Set(_expr.object, _expr.name, value, _expr.token);
+
+            /* If '_expr' is not a assignment target, then invalid target. */
+            this._error(equal, 'Cannot assign to a r-value!');
+        }
+
+        return _expr;
+    }
+
+    /* Matches a or a group of tokens (generally 2). */
+    const _match(what) {
+        take res = false;
+
+        /* A group of tokens. */
+        if(typeof what == 'list') {
+            res = true;
+
+            for(take i = 0; i < len(what); i++) {
+                if(!this._check(what[i])) {
+                    res = false;
+
+                    break;
+                }
+
+                this._advance();
+            }
+        } else {
+            res = this._check(what); 
+
+            if(res) this._advance();
+        }
+
+        return res;
+    }
+
+    /* Returns true if we have any match. */
+    const _match_any(list) {
+        for(take i = 0; i < len(list); i++) {
+            if(this._match(list[i])) 
+                return true;
+        }
+
+        return false;
+    }
+
+    /* Checks whether the current is token is of the given type. */
+    const _check(type) {
+        take token = this._peek();
+
+        return token != null ? token.type == type : false;
+    }
+
+    /* Take a look at the current token. */
+    const _peek() {
+        return this._tokens.at(this._current);
+    }
+
+    /* Checks whether we ran out of tokens. */
+    const _is_end() {
+        return this._tokens[this._current].type == tk.TokenType.EOF;
+    }
+
+    /* Advances one token. */
+    const _advance() {
+        if(!this._is_end()) 
+            this._current++;
+
+        return this._previous();
+    }
+
+    /* Returns previous token. */
+    const _previous() {
+        return this._tokens.at(this._current - 1);
+    }
+
+    /* Parses an entire expression. */
+    const _expression() {
+        return this._assignment();
+    }
+
+    /* Consumes the token ';' or 'NEWLINE'. */
+    const _end() {
+        if(this._check(tk.TokenType.RIGHT_CURLY)) 
+            return;
+
+        if(!this._match_any([ tk.TokenType.SEMICOLON, tk.TokenType.NEWLINE, 
+            tk.TokenType.EOF ])) 
+        {
+            this._error(this._peek(), "Expected a ';' or a newline!");
+        }
+
+        /* Skip rest of the newlines and semicolons. */
+        while(this._match_any([ tk.TokenType.SEMICOLON, 
+              tk.TokenType.NEWLINE ]));
+    }
+
+    ## ---------------- STATEMENTS ---------------- ##
+
+    /* An expression statement. */
+    const _expression_stmt() {
+        take _expr = this._expression();
+
+        this._end();
+
+        return stmt.Expression(_expr);
+    }
+
+    /* In mistix-lang it's a block statement. */
+    const _block_stmt() {
+        take statements = [];
+
+        while(!this._check(tk.TokenType.RIGHT_CURLY)) {
+            take decl = this._declaration();
+
+            if(this._had_error) 
+                return null;
+
+            if(decl != null) 
+                statements.insert(decl);
+        }
+
+        this._consume(tk.TokenType.RIGHT_CURLY, "Expected a '}' at the end of block!");
+
+        return stmt.Block(statements);
+    }
+
+    /* If-else control flow. */
+    const _if_stmt() {
+        take condition = this._expression();
+
+        this._consume(tk.TokenType.LEFT_CURLY, "Expected '{' while starting the if block!");
+
+        take then = this._block_stmt(),
+            else_ = null;
+        
+        if(this._match(tk.TokenType.EL)) {
+            else_ = this._statement();
+
+            if(else_ == null) {
+                this._error(this._peek(), "Expected a statement after 'el'!");
+
+                return null;
+            }
+        }
+
+        return stmt.If(condition, then, else_);
+    }
+
+    /* 'dur' -> 'during', means while loop, :) */
+    const _dur_stmt() {
+        take condition = this._expression();
+
+        /* 'dur [expression] {}'. */
+        this._consume(tk.TokenType.LEFT_CURLY, "Expected a '{' when starting 'during' block!");
+
+        take body = this._block_stmt();
+
+        if(this._had_error) 
+            return null;
+
+        return stmt.During(condition, body);
+    }
+
+    /* 'exp' is for loop. */
+    const _exp_stmt() {
+        take initializer;
+
+        if(this._check(tk.TokenType.SEMICOLON)) 
+            initializer = null;
+        else if(this._match(tk.TokenType.VAR)) 
+            initializer = this._var_decl(false);
+        else initializer = stmt.Expression(this._expression());
+
+        /* Now consume ';'. */
+        this._consume(tk.TokenType.SEMICOLON, "Expected a ';' after initializer!");
+
+        take condition = null;
+        if(!this._check(tk.TokenType.SEMICOLON)) 
+            condition = this._expression();
+
+        this._consume(tk.TokenType.SEMICOLON, "Expected a ';' after condition!");
+
+        take increment = null;
+        if(!this._check(tk.TokenType.SEMICOLON)) 
+            increment = this._expression();
+
+        this._consume(tk.TokenType.SEMICOLON, "Expected a ';' after increament!");
+        this._consume(tk.TokenType.LEFT_CURLY, "Expected a '{' while starting the expire block!");
+
+        take body = this._block_stmt();
+
+        ## Syntactic desugaring.
+
+        if(increment != null) body = stmt.Block([ body, stmt.Expression(increment) ]);
+        if(condition == null) condition = expr.Literal(true);
+
+        body = stmt.During(condition, body);
+
+        if(initializer != null) body = stmt.Block([ initializer, body ]);
+
+        return body;
+    }
+
+    /* Return statement :). */
+    const _return_stmt() {
+        take token = this._previous();
+
+        take value = null;
+        if(!this._check(tk.TokenType.SEMICOLON) || !this._check(tk.TokenType.NEWLINE)) 
+            value = this._expression();
+
+        this._end();
+        
+        return stmt.Return(value, token);
+    }
+
+    /* Parses a statement. */
+    const _statement() {
+        if(this._match(tk.TokenType.LEFT_CURLY)) return this._block_stmt();
+        else if(this._match(tk.TokenType.IF)) return this._if_stmt();
+        else if(this._match(tk.TokenType.DUR)) return this._dur_stmt();
+        else if(this._match(tk.TokenType.EXP)) return this._exp_stmt();
+        else if(this._match(tk.TokenType.RET)) return this._return_stmt();
+        else if(this._match_any([ tk.TokenType.SEMICOLON, tk.TokenType.NEWLINE ])) {
+            while(this._match_any([ tk.TokenType.SEMICOLON, tk.TokenType.NEWLINE ]));
+
+            return null;
+        }
+
+        return this._expression_stmt();
+    }
+
+    ## ---------------- STATEMENTS END ---------------- ##
+
+    /* Consume one token, throw error if not expected token. */
+    const _consume(type, message) {
+        if(this._check(type)) 
+            return this._advance();
+
+        this._error(this._peek(), message);
+    }
+
+    /* Reports if any error happened. */
+    const _error(token, message) {
+        /* Do not report error if we are in panic mode. */
+        if(this._panic_mode) 
+            return;
+
+        /* Go to panic mode. */
+        this._panic_mode = true;
+        this._had_error  = true;
+
+        this._mistix.error(token, message);
+    }
+
+    /* Synchronizes declarations/statements to generate less relevant 
+       errors to error prior. */
+    const _synchronize() {
+        this._panic_mode = false;
+
+        this._advance();
+
+        while(!this._is_end()) {
+            take prev = this._previous();
+
+            if(prev == tk.TokenType.SEMICOLON || prev == tk.TokenType.NEWLINE) 
+                return;
+
+            switch(this._peek().type) {
+                case tk.TokenType.VAR:
+                case tk.TokenType.CLS: 
+                case tk.TokenType.FN: 
+                case tk.TokenType.DUR: 
+                case tk.TokenType.IF: 
+                case tk.TokenType.EL: 
+                case tk.TokenType.EXP: 
+                case tk.TokenType.RET: 
+                    return;
+            }
+
+            this._advance();
+        }
+    }
+
+    /* 'var' keyword is to declare variables. */
+    const _var_decl(end) {
+        take name = this._consume(tk.TokenType.IDENTIFIER, 'Expected a variable name!');
+
+        take initializer = null;
+        if(this._match(tk.TokenType.EQUAL)) 
+            initializer = this._expression();
+
+        if(this._had_error) 
+            return null;
+
+        /* Self-explanatory. */
+        if(end) 
+            this._end();
+
+        return stmt.Var(tk.extract(this._src, name), initializer, name);
+    }
+
+    /* Declares a function. */
+    const _fn_decl(kind) {
+        take name = this._consume(tk.TokenType.IDENTIFIER, 'Expected a $kind name!');
+
+        this._consume(tk.TokenType.LEFT_SQUARE, "Expected a '[' after $kind name!");
+
+        if(this._had_error) 
+            return;
+
+        take parameters = [];
+
+        if(!this._check(tk.TokenType.RIGHT_SQUARE)) {
+            do {
+                if(len(parameters) >= 255) {
+                    this._error(this._peek(), 'Cannot accept more than 255 parameters!');
+
+                    return null;
+                }
+
+                take parameter = this._consume(tk.TokenType.IDENTIFIER, 'Need a parameter name!');
+
+                if(this._had_error) 
+                    return;
+
+                parameters.insert(tk.extract(this._src, parameter));
+            } while(this._match(tk.TokenType.COMMA));
+        }
+
+        this._consume(tk.TokenType.RIGHT_SQUARE, "Expected a ']' after parameter block!");
+        this._consume(tk.TokenType.LEFT_CURLY, "Expected a '{' when starting the $kind!");
+
+        take block = this._block_stmt();
+
+        if(this._had_error) 
+            return;
+
+        return stmt.Fn(tk.extract(this._src, name), parameters, block.statements, name);
+    }
+
+    /* Decleares a class. */
+    const _cls_decl() {
+        take name = this._consume(tk.TokenType.IDENTIFIER, 'Expected a name of class!');
+
+        /* Superclass. */
+        take superclass = null;
+
+        if(this._match(tk.TokenType.LESS)) {
+            this._consume(tk.TokenType.IDENTIFIER, "Need a superclass name to inherit! Don't inherit emptiness.");
+
+            take name = this._previous();
+
+            superclass = expr.Variable(tk.extract(this._src, name), name);
+        }
+
+        this._consume(tk.TokenType.LEFT_CURLY, "Expected a '{' after class name.");
+
+        take methods = [];
+
+        while(!this._check(tk.TokenType.RIGHT_CURLY) && !this._is_end()) {
+            /* The NEWLINE support for ending statements sometime can be annoying. */
+            this._skip_endings();
+
+            take decl = this._fn_decl('method');
+
+            if(this._had_error) 
+                return null;
+
+            methods.insert(decl);
+
+            this._skip_endings();
+        }
+
+        this._consume(tk.TokenType.RIGHT_CURLY, "Have you any intention of ending the class? Use '}'.");
+        this._end();
+
+        return stmt.Class(tk.extract(this._src, name), methods, superclass, name);
+    }
+
+    /* Declarative statements. */
+    const _declaration() {
+        if(this._is_end()) 
+            return null;
+
+        if(this._match(tk.TokenType.VAR)) return this._var_decl(true);
+        else if(this._match(tk.TokenType.FN)) return this._fn_decl('function');
+        else if(this._match(tk.TokenType.CLS)) return this._cls_decl();
+        else return this._statement();
+
+        if(this._panic_mode) this._synchronize();
+
+        return null;
+    }
+
+    /* Skip the newlines. */
+    const _skip_newlines() {
+        while(this._match(tk.TokenType.NEWLINE));
+
+        return null;
+    }
+
+    /* Skip the endings NEWLINE or ';'. */
+    const _skip_endings() {
+        while(this._match_any([ tk.TokenType.SEMICOLON, tk.TokenType.NEWLINE ]));
+
+        return null;
+    }
+
+    /* Call me to initialize parsing. */
+    const parse() {
+        take statements = [];
+
+        while(!this._is_end()) {
+            take decl = this._declaration();
+
+            if(this._had_error) 
+                break;
+
+            if(decl != null) 
+                statements.insert(decl);
+        }
+
+        return statements;
+    }
+};
+
+return { Parser };
+
+}}

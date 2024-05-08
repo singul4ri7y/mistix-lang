@@ -1,0 +1,54 @@
+{{
+
+const TokenType = {};
+
+const tokens = [
+    /* Non-symbolic */
+    'IF', 'EL', 'DUR', 'EXP', 'RET', 'AND', 'OR', 'VAR', 'SEL', 'SUP', 'FN', 'CLS',
+
+    'IDENTIFIER',
+
+    /* Symbolic */
+    'LEFT_PAREN', 'RIGHT_PAREN', 'COMMA', 'MINUS', 'PLUS', 'ASTERISK', 
+    'SLASH', 'ACCESS', 'MODULUS', 'EQUAL', 'EQUAL2', 'NOT_EQUAL',
+    'GREAT', 'LESS', 'GREAT_EQUAL', 'LESS_EQUAL', 'LEFT_SQUARE', 
+    'RIGHT_SQUARE', 'LEFT_CURLY', 'RIGHT_CURLY',
+
+    /* Literal */
+    'NUMBER', 'NUL', 'STRING', 'TRU', 'FAL',
+
+    /* Semicolon and newline. */
+    'SEMICOLON', 'NEWLINE',
+
+    'EOF', 'ERROR'
+];
+
+for(take i = 0; i < len(tokens); i++) 
+    TokenType[tokens[i]] = tokens[i];
+
+const fn make_token(scanner, type, literal) {
+    return {
+        type, literal,
+        offset : scanner.get_offset(),
+        line   : scanner.get_line(),
+        length : scanner.get_length(),
+    }
+}
+
+const fn error_token(scanner, error_message) {
+    return {
+        type    : TokenType.ERROR,
+        literal : null,
+        offset  : error_message,
+        length  : len(error_message),
+        line    : scanner.get_line()
+    }
+}
+
+const fn extract(src, token) {
+    return src.substr(token.offset, token.offset + token.length);
+}
+
+return { make_token, error_token, extract, TokenType };
+
+}}

@@ -1,0 +1,154 @@
+{{
+
+class Binary {
+    const init(left, operator, right) {
+        this.left     = left;
+        this.operator = operator;
+        this.right    = right;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_binary_expr(this);
+    }
+};
+
+class Literal {
+    const init(value) {
+        this.value = value;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_literal_expr(this);
+    }
+};
+
+class Unary {
+    const init(operator, right) {
+        this.operator = operator;
+        this.right    = right;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_unary_expr(this);
+    }
+};
+
+class Grouping {
+    const init(expr) {
+        this.expr = expr;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_grouping_expr(this);
+    }
+};
+
+class Resolvable {
+    const init() {
+        /* Will be filled in by the resolver.
+           Global variable if null. */
+        this.distance = null;
+    }
+};
+
+class Variable is Resolvable {
+    const init(name, token) {
+        super.init();
+
+        this.name  = name;
+        this.token = token;        // The corresponding token of 'name'.
+    }
+
+    const accept(visitor) {
+        return visitor.visit_variable_expr(this);
+    }
+};
+
+class Assign is Resolvable {
+    const init(name, value, token) {
+        super.init();
+
+        this.name  = name;
+        this.value = value;
+        this.token = token;        // The corresponding token of 'name'.
+    }
+
+    const accept(visitor) {
+        return visitor.visit_assign_expr(this);
+    }
+};
+
+class Logical {
+    const init(left, operator, right) {
+        this.left     = left;
+        this.operator = operator;
+        this.right    = right;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_logical_expr(this);
+    }
+};
+
+class Call {
+    const init(callee, arguments, token) {
+        this.callee    = callee;
+        this.arguments = arguments;
+        this.token     = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_call_expr(this);
+    }
+};
+
+class Get {
+    const init(object, name, token) {
+        this.object = object;
+        this.name   = name;
+        this.token  = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_get_expr(this);
+    }
+};
+
+class Set {
+    const init(object, name, value, token) {
+        this.object = object;
+        this.name   = name;
+        this.value  = value;
+        this.token  = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_set_expr(this);
+    }
+};
+
+class Sel is Resolvable {
+    const init(token) {
+        this.token = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_sel_expr(this);
+    }
+};
+
+class Sup is Resolvable {
+    const init(method, token) {
+        this.method = method;
+        this.token   = token;
+    }
+
+    const accept(visitor) {
+        return visitor.visit_sup_expr(this);
+    }
+};
+
+return { Binary, Literal, Unary, Grouping, Variable, 
+    Assign, Logical, Call, Get, Set, Sel, Sup };
+
+}}

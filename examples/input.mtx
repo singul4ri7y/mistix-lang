@@ -1,0 +1,15 @@
+@ Input example in Mistix Lang.
+@ Written by SD Asif Hossein.
+@
+@ shon(type)
+@     type -> String
+@
+@     'string' -> For string type input.
+@     'num'    -> For number type input.
+
+print('Input two numbers in separate lines: ');
+
+var x = input('num');
+var y = input('num');
+
+print('The summation: ' + string(x + y));

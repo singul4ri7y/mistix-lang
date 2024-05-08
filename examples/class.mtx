@@ -1,0 +1,32 @@
+@ A simple example of Mistix Object-Orientation.
+@ Written by SD Asif Hossein.
+
+cls Vehicle {
+    construct[wheels] {
+        sel -> wheels = wheels;
+    }
+
+    query[] {
+        print(sel -> wheels);
+    }
+};
+
+cls Car < Vehicle {
+    construct[model, year] {
+        @ Call superclass constructor.
+        sup -> construct(4);
+
+        sel -> model = model;
+        sel -> year  = year;
+    }
+
+    @ Overloading the superclass method.
+    query[] {
+        print('Model: ' + sel -> model + ', Year: ' + sel -> year);
+        print(sel -> wheels);
+    }
+}
+
+var bmw = Car('BMW', '2030');
+
+bmw -> query();

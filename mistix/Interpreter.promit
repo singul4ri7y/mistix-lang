@@ -1,0 +1,502 @@
+/* Interpreter to execute the AST. */
+
+{{
+
+take TokenType   = include('Token').TokenType;
+take Environment = include('Environment').Environment;
+take Callable    = include('Callable').Callable;
+
+take fn_suit  = include('Function');
+take cls_suit = include('Class');
+take stmt     = include('Statement');
+
+class Interpreter {
+    init(mistix) {
+        this._globals = Environment();
+
+        this._had_error   = false;
+        this._mistix      = mistix;
+        this._environment = this._globals;
+
+        /* For returning from function calls. */
+        this._has_returned = false;
+        this._ret_value    = null;
+
+        /* The number of call frames we have right now. */
+        /* It's '1' because we have the top-most main() program running. */
+        /* Maximum allowed call frame number is 24. */
+        this._frames = 1;
+
+        ## Some native functions.
+
+        this._globals.define('print', fn_suit.Print());
+        this._globals.define('input', fn_suit.Input());
+        this._globals.define('string', fn_suit.Str());
+        this._globals.define('number', fn_suit.Num());
+    }
+
+    ## ---------------- EXPRESSIONS ---------------- ##
+
+    const visit_literal_expr(expr) {
+        return expr.value;
+    }
+
+    const visit_grouping_expr(expr) {
+        return this._exec(expr.expr);
+    }
+
+    const visit_unary_expr(expr) {
+        take value = this._exec(expr.right);
+
+        if(this._stop_progress()) 
+            return null;
+
+        switch(expr.operator.type) {
+            case TokenType.MINUS: 
+                return -value;
+                break;
+
+            case TokenType.ASTERISK: 
+                return !value;
+                break;
+        }
+
+        ## UNREACHABLE.
+        this.error(-1, 'Bruhh! Prolly got some parser problem! From: visit_unary_expr');
+    }
+
+    /* Calls a function. */
+    const visit_call_expr(expr) {
+        take callee = this._exec(expr.callee);
+
+        if(this._stop_progress()) 
+            return null;
+
+        take arguments = [];
+
+        for(take i = 0; i < len(expr.arguments); i++) 
+            arguments.insert(this._exec(expr.arguments[i]));
+
+        if(!(callee instof Callable)) {
+            this.error(expr.token.line, 'Can only call classes and functions!');
+
+            return null;
+        }
+
+        if(len(arguments) != callee.arity()) {
+            this.error(expr.token.line, 'Function expects ${callee.arity()} arguments, ${len(arguments)} provided!');
+
+            return null;
+        }
+
+        # Callee is going to be a Callable.
+        return callee.call(this, arguments);
+    }
+
+    /* Does all the logical 'or' and 'and' operations. */
+    const visit_logical_expr(expr) {
+        take left = this._exec(expr.left);
+
+        if(this._stop_progress()) 
+            return null;
+
+        if(expr.operator.type == TokenType.OR) {
+            if(left) return left;
+        } else {
+            if(!left) return left;
+        }
+
+        return this._exec(expr.right);
+    }
+
+    /* Gets a property from an instance. */
+    const visit_get_expr(expr) {
+        /* Evaluate which object to get the property from. */
+        take object = this._exec(expr.object);
+
+        if(this._stop_progress()) 
+            return null;
+
+        if(object instof cls_suit.Instance) {
+            take result = object.get(expr.name);
+
+            if(typeof result == 'dictionary') {
+                this.error(expr.token.line, result.error);
+
+                return null;
+            }
+
+            return result;
+        }
+
+        this.error(expr.token.line, 'Can only access properties from an instance!');
+
+        return null;
+    }
+
+    /* Sets a property in an instance. */
+    const visit_set_expr(expr) {
+        take object = this._exec(expr.object);
+        
+        if(this._stop_progress()) 
+            return null;
+
+        if(!(object instof cls_suit.Instance)) {
+            this.error(expr.token.line, 'Can only set properties to an instance!');
+
+            return null;
+        }
+
+        take value = this._exec(expr.value);
+
+        if(this._stop_progress()) 
+            return null;
+
+        object.set(expr.name, value);
+
+        return value;
+    }
+
+    /* Gets 'sel' which is basically 'this'. */
+    const visit_sel_expr(expr) {
+        return this._lookup_var('sel', expr);
+    }
+
+    /* Gets a superclass method. */
+    const visit_sup_expr(expr) {
+        /* Get the superclass. */
+        take superclass = this._environment.get_at(expr.distance, 'sup');
+        take instance   = this._environment.get_at(expr.distance - 1, 'sel');
+
+        take method = superclass.find_method(expr.method);
+
+        if(method == null) {
+            this.error(expr.token.line, "The superclass '${superclass.name}' does not have any method '${expr.method}'!");
+
+            return null;
+        }
+
+        return method.bind(instance);
+    }
+
+    /* Does all the binary operations. */
+    const visit_binary_expr(expr) {
+        take left = this._exec(expr.left),
+            right = this._exec(expr.right);
+
+        if(this._stop_progress()) 
+            return null;
+
+        /* Fro equality, you can check with any types. */
+        if(expr.operator.type == TokenType.EQUAL2)
+            return left == right;
+        else if(expr.operator.type == TokenType.NOT_EQUAL)
+            return left != right;
+
+        if(!this._check_binary_operatability(left, right, expr.operator.line)) 
+            return null;
+
+        switch(expr.operator.type) {
+            case TokenType.PLUS        : return left + right;
+            case TokenType.MINUS       : return left - right;
+            case TokenType.ASTERISK    : return left * right;
+            case TokenType.MODULUS     : return left % right;
+            case TokenType.SLASH       : return left / right;
+            case TokenType.LESS        : return left < right;
+            case TokenType.GREAT       : return left > right;
+            case TokenType.GREAT_EQUAL : return left >= right;
+            case TokenType.LESS_EQUAL  : return left <= right;
+        }
+
+        showl left;
+        showl right;
+        showl expr.operator;
+
+        ## Unreachable.
+        this.error(-1, 'Bruhh! Prolly got some parser problem! From: visit_binary_expr');
+    }
+
+    /* Gets a variable. */
+    const visit_variable_expr(expr) {
+        return this._lookup_var(expr.name, expr);
+    }
+
+    /* Assigns a variable. */
+    const visit_assign_expr(expr) {
+        take value = this._exec(expr.value);
+
+        if(this._stop_progress()) 
+            return null;
+
+        take result;
+        
+        if(expr.distance != null) 
+            result = this._environment.assign_at(expr.distance, expr.name, value);
+        else result = this._globals.assign(expr.name, value);
+
+        if(!result) 
+            this.error(expr.token.line, "The variable '${expr.name}' does not exist! Sed :(");
+
+        return value;
+    }
+
+    ## ---------------- EXPRESSIONS END ---------------- ##
+
+    /* Check whether the values are operatable. */
+    const _check_binary_operatability(left, right, line) {
+        take result = true;
+
+        /* Ugly code, ik. But she is beyond beautiful. */
+        if(typeof left == 'string') {
+            switch(typeof right) {
+                case 'number'  : 
+                case 'boolean' :
+                case 'null'    : 
+                    result = false;
+            }
+        }
+        else if(typeof right == 'string') result = false;
+
+        if(!result) 
+            this.error(line, 'Operands are not compatible!');
+
+        return result;
+    }
+
+    ## ---------------- STATEMENTS ---------------- ##
+
+    /* Expression statement. */
+    const visit_expression_stmt(stmt) {
+        this._exec(stmt.expr);
+
+        return null;
+    }
+
+    const visit_var_stmt(stmt) {
+        take value = null;
+
+        if(stmt.initializer != null) 
+            value = this._exec(stmt.initializer);
+
+        if(this._stop_progress()) 
+            return null;
+
+        /* It's only going to happen if a global variable redefinition
+           happens. Local redefinition check will be done by the resolver. */
+        if(!this._environment.define(stmt.name, value)) 
+            this.error(stmt.token.line, "Redefinition of global variable '${stmt.name}'!");
+
+        return null;
+    }
+
+    /* For block statements. */
+    const visit_block_stmt(stmt) {
+        take prev_env = this._environment;
+
+        this.exec_block(stmt.statements, Environment(prev_env), false);
+
+        return null;
+    }
+
+    /* The while, sorry 'during' loop. :3 */
+    const visit_dur_stmt(stmt) {
+        take condition = this._exec(stmt.condition);
+
+        if(this._stop_progress()) 
+            return;
+
+        while(condition) {
+            this._exec(stmt.body);
+
+            if(this._stop_progress()) 
+                return;
+
+            condition = this._exec(stmt.condition);
+
+            if(this._stop_progress())
+                return;
+        }
+
+        return null;
+    }
+
+    /* If statement. */
+    const visit_if_stmt(stmt) {
+        take condition = this._exec(stmt.condition);
+
+        if(this._stop_progress()) 
+            return null;
+
+        if(condition) this._exec(stmt.then);
+        else if(stmt.else_ != null) this._exec(stmt.else_);
+
+        return null;
+    }
+
+    /* Returns from a function. */
+    const visit_ret_stmt(stmt) {
+        take value = null;
+
+        if(stmt.value != null) value = this._exec(stmt.value);
+
+        this._has_returned = true;
+        this._ret_value    = value;
+    }
+
+    /* Function statement to define a function. */
+    const visit_fn_stmt(stmt) {
+        take function = fn_suit.Fn(stmt, this._environment, false);
+
+        this._environment.define(stmt.name, function);
+
+        return null;
+    }
+
+    /* Define a class. */
+    const visit_cls_stmt(stmt) {
+        take superclass = null;
+
+        if(stmt.superclass != null) {
+            superclass = this._exec(stmt.superclass);
+
+            if(this._stop_progress()) 
+                return null;
+
+            if(!(superclass instof cls_suit.Class)) {
+                this.error(stmt.token.line, 'The value to be inherited is not a class!');
+
+                return null;
+            }
+        }
+
+        /* Use two stage variable binding process. Allows the references
+           of the classes be accessed by the methods. */
+        this._environment.define(stmt.name, null);
+
+        take env = this._environment;
+
+        if(stmt.superclass != null) {
+            env = Environment(env);
+            
+            env.define('sup', superclass);
+        }
+
+        take methods = {};
+
+        for(take i = 0; i < len(stmt.methods); i++) {
+            take method = fn_suit.Fn(stmt.methods[i], env, 
+                stmt.methods[i].name == 'construct');
+
+            methods[stmt.methods[i].name] = method;
+        }
+        
+        take klass = cls_suit.Class(stmt.name, methods, superclass);
+        this._environment.assign(stmt.name, klass);
+
+        return null;
+    }
+
+    ## ---------------- STATEMENTS END ---------------- ##
+
+    /* Executes a block statement. */
+    /* Will be used outside of the interpreter native functions. */
+    const exec_block(statements, environment, in_fn) {
+        take prev_env = this._environment;
+
+        /* Now set the newly created environment. */
+        this._environment = environment;
+
+        for(take i = 0; i < len(statements); i++) {
+            this._exec(statements[i]);
+
+            if(this._had_error) 
+                break;
+        }
+
+        take ret_val = this._ret_value;
+
+        if(in_fn) {
+            this._has_returned = false;
+            this._ret_value    = null;
+        }
+
+        /* Reset the environment. */
+        this._environment = prev_env;
+
+        return ret_val;
+    }
+
+    /* Executes expressions and statements. */
+    const _exec(execable) {
+        if(this._stop_progress()) 
+            return null;
+
+        return execable.accept(this);
+    }
+
+    /* Looksup a variable and returns it. */
+    const _lookup_var(name, expr) {
+        take value;
+
+        if(expr.distance != null) 
+            value = this._environment.get_at(expr.distance, name);
+        else value = this._globals.get(name);
+
+        /* If we get a return type of dictionary, suggests that
+           we ran into issues. */
+        if(typeof value == 'dictionary') {
+            this.error(expr.token.line, value.error);
+
+            return null;
+        }
+
+        return value;
+    }
+
+    /* Returns true if we should stop progress. */
+    const _stop_progress() {
+        return this._had_error || this._has_returned;
+    }
+
+    /* To report runtime errors. */
+    const error(line, message) {
+        if(this._had_error) 
+            return;
+
+        this._mistix.runtime_error(line, message);
+
+        this._had_error = true;
+    }
+
+    /* Adds a new call frame. */
+    const add_frame() {
+        this._frames++;
+    }
+
+    /* Removes a call-frame. */
+    const remove_frame() {
+        this._frames--;
+    }
+
+    /* Gets the total number of call frames. */
+    const get_total_number_of_frames() {
+        return this._frames;
+    }
+
+    /* Fires up the interpretation. */
+    const interpret(statements) {
+        /* Reset error everytime we interpret. */
+        this._had_error = false;
+        
+        /* Just to be sure. */
+        this._has_returned = false;
+        this._ret_value    = null;
+
+        for(take i = 0; i < len(statements); i++) 
+            this._exec(statements[i]);
+    }
+}
+
+return { Interpreter };
+
+}}

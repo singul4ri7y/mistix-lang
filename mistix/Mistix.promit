@@ -1,0 +1,181 @@
+{{
+
+take Scanner     = include('Scanner').Scanner;
+take Parser      = include('Parser').Parser;
+take Resolver    = include('Resolver').Resolver;
+take Interpreter = include('Interpreter').Interpreter;
+
+take tk = include('Token');
+
+class Mistix {
+    init() {
+        this._src         = null;        # Will be assigned by '_run'
+        this._had_error   = false;
+        this._interpreter = Interpreter(this);
+    }
+
+    const run_file(path) {
+        take source = File::read_all(path);
+
+        if(source == '') {
+            System::stdout.write_line("The provided file '$path' does not exist or empty!");
+
+            return  System::exit(66);
+        }
+
+        this._run(source);
+
+        if(this._had_error) 
+            System::exit(65);
+    }
+
+    const repl() {
+        System::stdout.write_line("Mistix Lang v0.5.0 (Beta 1) with ${System::get_version()}
+
+Welcome to the interactive console of mistix-lang.
+Type '.help' to know more.\n");
+
+        take line;
+
+        do {
+            take do_cont = false;
+
+            System::stdout.write('> ');
+
+            line = System::stdin.read_line(true);
+
+            switch(line) {
+                case '.exit': return;
+                case '.help': 
+                    System::stdout.write_line("How to use REPL: 
+Try to input statements/expressions in a single line.
+
+Commands: 
+'.editor' : Go editor mode and do multiline input.
+'.exit'   : Exit REPL mode.\n");
+
+                    do_cont = true;
+                    break;
+
+                case '.editor': {
+                    System::stdout.write_line("\nYou are now in editor mode! Type '.end' in a seperate line to finish, '.del' to cancel.\n");
+
+                    take line_num = 1, input;
+
+                    line = '';
+
+                    do {
+                        System::stdout.write('${line_num++} => ');
+
+                        input = System::stdin.read_line(false);
+
+                        if(input == '.end\n') 
+                            break;
+                        else if(input == '.del\n') {
+                            do_cont = true;
+                            break;
+                        }
+
+                        line += input;
+                    } while(input != -1);
+                } break;
+
+                default: {
+                    if(line[0] == '.') {
+                        System::stderr.write_line("Invalid REPL command! Enter '.help' to know more about the commands.");
+
+                        do_cont = true;
+                    }
+
+                    /* No break. */
+                }
+            }
+
+            if(do_cont) { do_cont = false; continue; }
+
+            this._run(line);
+
+            /* Reset error. */
+            this._had_error = false;
+        } while(line != null);
+    }
+
+    /* This is where magic happens. */
+    const _run(src) {
+        this._src = src;
+
+        take scanner = Scanner(src);
+        take error   = scanner.error();
+
+        /* If we had any error in the Scanner, report immediately.
+           It's initialization error. */
+        if(error != null) {
+            System::stderr.write_line(error);
+            this._had_error = true;
+
+            return;
+        }
+
+        take tokens = scanner.scan_tokens();
+
+        /* Check whether we had any error while scanning all the tokens. */
+        error = scanner.error();
+
+        if(error != null) {
+            this._report(scanner.get_line(), '', error);
+
+            return;
+        }
+
+        /* If we don't have any tokens, there is no program. We simply return. */
+        if(len(tokens) == 0) 
+            return;
+        
+        take parser = Parser(this, src, scanner.scan_tokens(this));
+
+        take statements = parser.parse();
+
+        if(this._had_error) 
+            return;
+
+        /* Now to do the syntactical analysis. */
+        Resolver(this).analyze(statements);
+
+        if(this._had_error) 
+            return;
+
+        this._interpreter.interpret(statements);
+
+        /* Collect some garbage. */
+        System::gc();
+    }
+
+    /* This function can be called by the parser, interpreter or resolver. */
+    const error(token, message) {
+        if(token.type == tk.TokenType.EOF) 
+            this._report(token.line, 'at end', message);
+        else this._report(token.line, "at '" + tk.extract(this._src, token) + "'", message);
+    }
+
+    /* This function will be used to display runtime errors. */
+    const runtime_error(line, message) {
+        System::stderr.write_line('Runtime error on line $line: $message');
+
+        this._had_error = true;
+    }
+
+    /* This function will be used to display runtime warnings. */
+    const runtime_warning(message) {
+        System::stderr.write_line('Runtime warning: $message');
+    }
+
+    const _report(line, where, message) {
+        System::stderr.write_line("Error on line $line $where: $message");
+
+        this._had_error = true;
+    }
+};
+
+return { Mistix };
+
+}}

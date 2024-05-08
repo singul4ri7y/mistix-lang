@@ -1,0 +1,21 @@
+@ A simple test of closures.
+@ Written by SD Asif Hossein.
+
+fn counter[] {
+    @ 'i' will be enclosed by the function 'count'!
+    var i = 0;
+
+    @ Function within a function.
+    fn count[] {
+        @ 'i' is getting enclosed!
+        i = i + 1
+        ret i
+    }
+
+    ret count
+}
+
+var count = counter();
+
+print(count());    @ Expected output: '1'
+print(count());    @ Expected output: '2'

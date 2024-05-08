@@ -1,0 +1,152 @@
+/* A not so pretty printer of AST. Used for debugging only. */
+
+{{
+
+take tk = include('Token');
+
+class Printer {
+    const init(src) {
+        this._src = src;
+    }
+
+    const print(statements) {
+        for(take i = 0; i < len(statements); i++) 
+            System::stderr.write_line(statements.at(i).accept(this));
+    }
+
+    const visit_binary_expr(expr) {
+        take name;
+
+        return this._parenthesize(tk.extract(this._src, expr.operator), 
+            [ expr.left, expr.right ]);
+    }
+
+    const visit_unary_expr(expr) {
+        return this._parenthesize(tk.extract(this._src, expr.operator), [ expr.right ]);
+    }
+
+    const visit_literal_expr(expr) {
+        take value = expr.value;
+
+        if(typeof value == 'boolean') 
+            return value ? 'tru' : 'fal';
+        else if(typeof value == 'null') 
+            return 'nul';
+
+        return value.stringify();
+    }
+
+    const visit_grouping_expr(expr) {
+        return this._parenthesize('GROUP', [ expr.expr ]);
+    }
+
+    const visit_logical_expr(expr) {
+        return this._parenthesize(tk.extract(this._src, expr.operator), [ expr.left, expr.right ]);
+    }
+
+    const visit_variable_expr(expr) {
+        return this._parenthesize('VAR ${expr.distance != null ? '[' + expr.distance + '] ' : ''}${expr.name}', []);
+    }
+
+    const visit_assign_expr(expr) {
+        return this._parenthesize('ASSIGN ${expr.name}', [ expr.value ]);
+    }
+
+    const visit_call_expr(expr) {
+        return this._parenthesize_call('CALL', expr.callee, expr.arguments);
+    }
+
+    const visit_get_expr(expr) {
+        return this._parenthesize('GET ${expr.name} <-', [ expr.object ]);
+    }
+
+    const visit_set_expr(expr) {
+        return this._parenthesize('SET ${expr.name} <-', [ expr.object, expr.value ]);
+    }
+
+    const visit_sel_expr(expr) {
+        return '(SEL)';
+    }
+
+    const _parenthesize(name, expr_list) {
+        take build = '(' + name;
+
+        for(take i = 0; i < len(expr_list); i++) 
+            build += ' ' + expr_list[i].accept(this);
+
+        return build + ')';
+    }
+
+    const visit_expression_stmt(stmt) {
+        return '(STMT:EXPR ' + stmt.expr.accept(this) + ')';
+    }
+
+    const visit_var_stmt(stmt) {
+        return '(STMT:VAR ${stmt.name} ' + stmt.initializer.accept(this) + ')';
+    }
+
+    const visit_block_stmt(stmt) {
+        take build = '(STMT:BLOCK {';
+
+        for(take i = 0; i < len(stmt.statements); i++) 
+            build += ' :: ' + stmt.statements[i].accept(this);
+
+        return build + ' })';
+    }
+
+    const visit_if_stmt(stmt) {
+        take build = '(STMT:IF ' + stmt.condition.accept(this) + ' | ' + stmt.then.accept(this);
+
+        if(stmt.else_ != null) 
+            build += ' | ' + stmt.else_.accept(this);
+        
+        return build + ')';
+    }
+
+    const visit_dur_stmt(stmt) {
+        return '(STMT:DUR ' + stmt.condition.accept(this) + ' -> ' + stmt.body.accept(this) + ')';
+    }
+
+    const visit_fn_stmt(stmt) {
+        take build = '(STMT:FN ${stmt.name} [ ';
+
+        for(take i = 0; i < len(stmt.params); i++) 
+            build += stmt.params[i] + ' ';
+
+        build += '] { ';
+
+        for(take i = 0; i < len(stmt.body); i++) 
+            build += ' :: ' + stmt.body.at(i).accept(this);
+
+        return build + ' })';
+    }
+
+    const visit_ret_stmt(stmt) {
+        return '(STMT:RET ' + stmt.value.accept(this) + ')';
+    }
+
+    const visit_cls_stmt(stmt) {
+        take build = '(STMT:CLS ${stmt.name}';
+
+        for(take i = 0; i < len(stmt.methods); i++) 
+            build += ' ' + stmt.methods[i].accept(this);
+
+        return build + ')';
+    }
+
+    const _parenthesize_call(name, callee, arguments) {
+        take build = '(' + name;
+
+        build += ' ' + callee.accept(this) + ' [';
+
+        for(take i = 0; i < len(arguments); i++) 
+            build += ' ' + arguments.at(i).accept(this);
+
+        return build + ' ])';
+    }
+}
+
+return { Printer };
+
+}}
+

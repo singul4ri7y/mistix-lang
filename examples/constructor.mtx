@@ -1,0 +1,23 @@
+@ Constructor of class in Mistix Lang.
+@ Written by SD Asif Hossein.
+
+cls Data {
+    construct[name, passion, age] {
+        sel -> name    = name
+        sel -> passion = passion
+        sel -> age     = age
+    }
+
+    query[] {
+        print('Hello! My name is ' + sel -> name + ' and I am ' + 
+            string(sel -> age) + '. I like to do ' + sel -> passion +
+            ' a lot!')
+    }
+}
+
+var data = Data('SD Asif Hossein', 'coding', 21)
+
+data -> query()
+
+@@ Expected Output: 
+@ Hello! My name is SD Asif Hossein and I am 21. I like to do coding a lot!
