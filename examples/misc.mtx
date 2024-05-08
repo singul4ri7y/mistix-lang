@@ -1,0 +1,12 @@
+@ Showcase of the 'number' and 'string' function.
+@ Written by SD Asif Hossein.
+
+print('Input a number: ');
+var in = input('num');
+
+print('The string version of the number with concatenation: ' + string(in));
+print('Taking another input as string: ');
+
+in = input('string');
+
+print('The output of 10 + input: ' + string(10 + number(in)));
