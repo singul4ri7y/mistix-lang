@@ -118,10 +118,6 @@ Commands:
 
         take tokens = scanner.scan_tokens();
 
-        /* If we don't have any tokens, there is no program. We simply return. */
-        if(len(tokens) == 0) 
-            return;
-        
         /* Check whether we had any error while scanning all the tokens. */
         error = scanner.error();
 
@@ -131,6 +127,10 @@ Commands:
             return;
         }
 
+        /* If we don't have any tokens, there is no program. We simply return. */
+        if(len(tokens) == 0) 
+            return;
+        
         take parser = Parser(this, src, scanner.scan_tokens(this));
 
         take statements = parser.parse();

@@ -94,6 +94,18 @@ class Input is Fn {
     }
 };
 
-return { Fn, Print, Input };
+class Str is Fn {
+    const arity() { return 1 }
+    const stringify() { return "<native fn 'string'>" }
+    const call(interpreter, arguments) { return String::stringify(arguments[0]) }
+}
+
+class Num is Fn {
+    const arity() { return 1 }
+    const stringify() { return "<native fn 'number'>" }
+    const call(interpreter, arguments) { return Number::numberify(arguments[0]) }
+}
+
+return { Fn, Print, Input, Str, Num };
 
 }}

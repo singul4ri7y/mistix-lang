@@ -1,0 +1,41 @@
+@ A simple benchmark with Trees.
+@ Written by SD Asif Hossein.
+
+cls Tree {
+    construct[depth] {
+        sel -> depth = depth;
+
+        if depth > 0 {
+            sel -> a = Tree(depth - 1);
+            sel -> b = Tree(depth - 1);
+            sel -> c = Tree(depth - 1);
+            sel -> d = Tree(depth - 1);
+            sel -> e = Tree(depth - 1);
+        }
+    }
+
+    walk[] {
+        if sel -> depth == 0 { ret 0 }
+
+        ret sel -> depth +
+            sel -> a -> walk() +
+            sel -> b -> walk() +
+            sel -> c -> walk() +
+            sel -> d -> walk() + 
+            sel -> e -> walk();
+    }
+};
+
+var tree = Tree(8);
+exp var i = 0; i < 100; i = i + 1; {
+    print('Walking the tree...');
+    var walk = tree -> walk();
+    print('Walk value: ' + string(walk))
+
+    if walk *= 122068 {
+        print('Error');
+    }
+}
+
+print('Done');
+

@@ -31,6 +31,8 @@ class Interpreter {
 
         this._globals.define('print', fn_suit.Print());
         this._globals.define('input', fn_suit.Input());
+        this._globals.define('string', fn_suit.Str());
+        this._globals.define('number', fn_suit.Num());
     }
 
     ## ---------------- EXPRESSIONS ---------------- ##
@@ -60,7 +62,7 @@ class Interpreter {
         }
 
         ## UNREACHABLE.
-        this.error(-1, 'Bruhh! Prolly got some parser probelm!');
+        this.error(-1, 'Bruhh! Prolly got some parser problem! From: visit_unary_expr');
     }
 
     /* Calls a function. */
@@ -169,7 +171,7 @@ class Interpreter {
         take method = superclass.find_method(expr.method);
 
         if(method == null) {
-            thsi._error(expr.token.line, "The superclass '${superclass.name}' does not have any method '${expr.method}'!");
+            this.error(expr.token.line, "The superclass '${superclass.name}' does not have any method '${expr.method}'!");
 
             return null;
         }
@@ -186,8 +188,10 @@ class Interpreter {
             return null;
 
         /* Fro equality, you can check with any types. */
-        if(expr.operator.type == TokenType.EQUAL2) 
+        if(expr.operator.type == TokenType.EQUAL2)
             return left == right;
+        else if(expr.operator.type == TokenType.NOT_EQUAL)
+            return left != right;
 
         if(!this._check_binary_operatability(left, right, expr.operator.line)) 
             return null;
@@ -204,8 +208,12 @@ class Interpreter {
             case TokenType.LESS_EQUAL  : return left <= right;
         }
 
+        showl left;
+        showl right;
+        showl expr.operator;
+
         ## Unreachable.
-        this.error(-1, 'Bruhh! Prolly got some parser probelm!');
+        this.error(-1, 'Bruhh! Prolly got some parser problem! From: visit_binary_expr');
     }
 
     /* Gets a variable. */

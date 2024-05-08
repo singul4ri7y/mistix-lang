@@ -1,0 +1,17 @@
+@ Loops example in Mistix Lang.
+@ Written by SD Asif Hossein.
+
+print("Using 'during' loop...");
+
+var i = 10;
+
+dur i > 0 {
+    print('The value of i: ' + string(i));
+    i = i - 1;
+}
+
+print("Doing the same thing using 'expire' loop...");
+
+exp var i = 10; i > 0; i = i - 1; {
+    print('The value of i: ' + string(i));
+}

@@ -1,0 +1,24 @@
+@ Demonstration of inheritance in Mistix Lang.
+@ Written by SD Asif Hossein.
+
+cls Dog {
+    construct[name, breed] {
+        sel -> name = name
+        sel -> breed = breed
+    }
+
+    details[] {
+        print('Breed: ' + sel -> breed + ', Name: ' + sel -> name)
+    }
+}
+
+cls GermanShepherd < Dog {
+    construct[name] {
+        @ Call the superclass constructor.
+        sup -> construct(name, 'German Shepherd')
+    }
+}
+
+var dex = GermanShepherd('Dexter')
+
+dex -> details()

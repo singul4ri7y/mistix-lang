@@ -25,6 +25,8 @@ class Parser {
     /* The equality production. 
        Returns a Binary expression. */
     const _equality() {
+        this._skip_newlines();
+
         take _expr = this._comparison();
 
         while(this._match_any([ tk.TokenType.EQUAL2, tk.TokenType.NOT_EQUAL ])) 
@@ -36,6 +38,8 @@ class Parser {
     /* The comparison production. 
        Returns a Binary expression as well. */
     const _comparison() {
+        this._skip_newlines();
+
         take _expr = this._term();
 
         while(this._match_any([ tk.TokenType.GREAT, tk.TokenType.LESS, 
@@ -49,6 +53,8 @@ class Parser {
 
     /* The term production. */
     const _term() {
+        this._skip_newlines();
+
         take _expr = this._factor();
 
         while(this._match_any([ tk.TokenType.PLUS, tk.TokenType.MINUS ])) 
@@ -59,6 +65,8 @@ class Parser {
 
     /* The factor production, for multiplication and division. */
     const _factor() {
+        this._skip_newlines();
+
         take _expr = this._unary();
 
         while(this._match_any([ tk.TokenType.ASTERISK, tk.TokenType.SLASH,
@@ -70,6 +78,8 @@ class Parser {
 
     /* Unary production. */
     const _unary() {
+        this._skip_newlines();
+
         if(this._match_any([ tk.TokenType.ASTERISK, tk.TokenType.MINUS ])) 
             return expr.Unary(this._previous(), this._unary());
 
@@ -78,6 +88,8 @@ class Parser {
 
     /* Call functions or 'value' in general. */
     const _call() {
+        this._skip_newlines();
+
         take _expr = this._primary();
 
         while(true) {
@@ -113,6 +125,8 @@ class Parser {
 
     /* The primary production, for literals and all. */
     const _primary() {
+        this._skip_newlines();
+
         if(this._match(tk.TokenType.TRU)) return expr.Literal(true);
         if(this._match(tk.TokenType.FAL)) return expr.Literal(false);
         if(this._match(tk.TokenType.NUL)) return expr.Literal(null);
@@ -150,7 +164,33 @@ class Parser {
 
         this._error(this._peek(), 'Expected expression!');
     }
-    
+
+    /* The logical 'or' operator. */
+    const _or() {
+        this._skip_newlines();
+
+        take _expr = this._and();
+
+        while(this._match(tk.TokenType.OR)) 
+            _expr = expr.Logical(_expr, this._previous(), this._and());
+
+        return _expr;
+    }
+
+    /* The logical 'and' operator. */
+    const _and() {
+        this._skip_newlines();
+
+        take _expr = this._equality();
+
+        while(this._match(tk.TokenType.AND)) 
+            _expr = expr.Logical(_expr, this._previous(), this._equality());
+
+        return _expr;
+    }
+
+    ## ---------------- EXPRESSIONS END ---------------- ##
+
     /* Assigns a variable. */
     const _assignment() {
         take _expr = this._or();
@@ -171,28 +211,6 @@ class Parser {
 
         return _expr;
     }
-
-    /* The logical 'or' operator. */
-    const _or() {
-        take _expr = this._and();
-
-        while(this._match(tk.TokenType.OR)) 
-            _expr = expr.Logical(_expr, this._previous(), this._and());
-
-        return _expr;
-    }
-
-    /* The logical 'and' operator. */
-    const _and() {
-        take _expr = this._equality();
-
-        while(this._match(tk.TokenType.AND)) 
-            _expr = expr.Logical(_expr, this._previous(), this._equality());
-
-        return _expr;
-    }
-
-    ## ---------------- EXPRESSIONS END ---------------- ##
 
     /* Matches a or a group of tokens (generally 2). */
     const _match(what) {
@@ -302,7 +320,8 @@ class Parser {
             if(this._had_error) 
                 return null;
 
-            statements.insert(decl);
+            if(decl != null) 
+                statements.insert(decl);
         }
 
         this._consume(tk.TokenType.RIGHT_CURLY, "Expected a '}' at the end of block!");
@@ -319,8 +338,15 @@ class Parser {
         take then = this._block_stmt(),
             else_ = null;
         
-        if(this._match(tk.TokenType.EL)) 
+        if(this._match(tk.TokenType.EL)) {
             else_ = this._statement();
+
+            if(else_ == null) {
+                this._error(this._peek(), "Expected a statement after 'el'!");
+
+                return null;
+            }
+        }
 
         return stmt.If(condition, then, else_);
     }
@@ -364,8 +390,9 @@ class Parser {
             increment = this._expression();
 
         this._consume(tk.TokenType.SEMICOLON, "Expected a ';' after increament!");
+        this._consume(tk.TokenType.LEFT_CURLY, "Expected a '{' while starting the expire block!");
 
-        take body = this._statement();
+        take body = this._block_stmt();
 
         ## Syntactic desugaring.
 
@@ -399,6 +426,11 @@ class Parser {
         else if(this._match(tk.TokenType.DUR)) return this._dur_stmt();
         else if(this._match(tk.TokenType.EXP)) return this._exp_stmt();
         else if(this._match(tk.TokenType.RET)) return this._return_stmt();
+        else if(this._match_any([ tk.TokenType.SEMICOLON, tk.TokenType.NEWLINE ])) {
+            while(this._match_any([ tk.TokenType.SEMICOLON, tk.TokenType.NEWLINE ]));
+
+            return null;
+        }
 
         return this._expression_stmt();
     }
@@ -553,8 +585,6 @@ class Parser {
 
     /* Declarative statements. */
     const _declaration() {
-        this._skip_endings();
-
         if(this._is_end()) 
             return null;
 
@@ -568,7 +598,14 @@ class Parser {
         return null;
     }
 
-    /* Skips any newlines or semicolons. */
+    /* Skip the newlines. */
+    const _skip_newlines() {
+        while(this._match(tk.TokenType.NEWLINE));
+
+        return null;
+    }
+
+    /* Skip the endings NEWLINE or ';'. */
     const _skip_endings() {
         while(this._match_any([ tk.TokenType.SEMICOLON, tk.TokenType.NEWLINE ]));
 
@@ -578,9 +615,6 @@ class Parser {
     /* Call me to initialize parsing. */
     const parse() {
         take statements = [];
-
-        /* Skip initial newlines. */
-        this._skip_endings();
 
         while(!this._is_end()) {
             take decl = this._declaration();

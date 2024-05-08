@@ -1,4 +1,5 @@
-@ A simple examople of Mistix Object-Orientation.
+@ A simple example of Mistix Object-Orientation.
+@ Written by SD Asif Hossein.
 
 cls Vehicle {
     construct[wheels] {
