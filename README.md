@@ -206,7 +206,7 @@ Usage: **``fn [function_name] [ parameters, ... ] { [statements] }``**
 ```
 fn add[x, y] {
     ret x + y
-thak
+}
 
 print(add(101, 99))    @ Expected output: 200
 ```
